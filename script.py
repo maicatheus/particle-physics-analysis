@@ -265,6 +265,209 @@ def plot_energy_vs_depth(depth_energy_data, output_dir="analysis_results", conve
     
     return image_files
 
+def plot_3d_particle_positions(depth_energy_data, output_dir="3d_plots"):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    image_files = []
+    
+    for energy, materials_data in depth_energy_data.items():
+        fig = plt.figure(figsize=(14, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        for material, data_points in materials_data.items():
+            if data_points:
+
+                positions = np.array([(p[0], p[1], p[2]) for p in data_points])  # x, y, z
+                energies = np.array([p[3] for p in data_points])  # energy
+                
+                norm = plt.Normalize(min(energies), max(energies))
+                colors = plt.cm.viridis(norm(energies))
+
+                ax.scatter(
+                    positions[:, 0],  # x
+                    positions[:, 1],  # y
+                    positions[:, 2],  # z
+                    c=colors,
+                    marker='o',
+                    alpha=0.6,
+                    label=material,
+                    s=10
+                )
+
+        ax.set_xlabel('X Position (cm)')
+        ax.set_ylabel('Y Position (cm)')
+        ax.set_zlabel('Z Position (cm)')
+        ax.set_title(f'3D Particle Positions at {energy} GeV (Color by Energy)')
+    
+        sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+        sm.set_array([])
+        fig.colorbar(sm, ax=ax, label='Energy (MeV)', shrink=0.5, aspect=10)
+        
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        output_file = os.path.join(output_dir, f'3d_positions_{energy}GeV.png')
+        plt.savefig(output_file, bbox_inches='tight', dpi=300)
+        plt.close()
+        image_files.append(output_file)
+    
+    return image_files
+
+def load_and_group_files_enhanced(directory):
+    data = defaultdict(lambda: defaultdict(list))
+    position_energy_data = defaultdict(lambda: defaultdict(list))
+    
+    for filename in os.listdir(directory):
+        print("Processing file: ", filename)
+        if filename.endswith('.hit'):
+            try:
+                parts = filename.split('-')
+                material = parts[0]
+                energy = parts[1]
+                seed = parts[2].split('.')[0]
+                
+                filepath = os.path.join(directory, filename)
+                processed_particles = set() 
+                
+                with open(filepath, 'r') as f:
+                    for line in f:
+                        fields = line.strip().split()
+                        if len(fields) >= 12 and fields[11] == 'gamma':
+                            try:
+                                particle_key = (fields[0], fields[1], fields[2])
+                                
+                                if particle_key not in processed_particles:
+                                    processed_particles.add(particle_key)
+                                    e_kin_MeV = float(fields[10])
+                                    x_pos = float(fields[3])  # x position
+                                    y_pos = float(fields[4])  # y position
+                                    z_pos = float(fields[5])  # z position
+                                    
+                                    if e_kin_MeV > 0:
+                                        wavelengths = calculate_wavelength(e_kin_MeV)
+                                        if wavelengths is not None:
+                                            data[energy][material].append(wavelengths)
+                                        
+                                        position_energy_data[energy][material].append((
+                                            x_pos, y_pos, z_pos, e_kin_MeV 
+                                        ))
+                            except (ValueError, IndexError) as e:
+                                print(f"Error processing line: {line.strip()}")
+                                print(f"Error: {str(e)}")
+                                continue
+            except (IndexError, ValueError) as e:
+                print(f"Error processing {filename}: {str(e)}")
+                continue
+    
+    return data, position_energy_data
+
+def plot_interactive_3d_positions(position_energy_data, output_dir="3d_plots", max_points=50000):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    output_files = []
+    
+    MIN_ENERGY = 0.1  # MeV
+    MAX_ENERGY = 0.5    # MeV
+    
+    for energy, materials_data in position_energy_data.items():
+        for material, data_points in materials_data.items():
+            if not data_points:
+                continue
+                
+            fig = go.Figure()
+            
+            data_array = np.array(data_points)
+            positions = data_array[:, :3]  # x, y, z cm
+            energies = data_array[:, 3]    # energy MeV
+            
+            if len(data_array) > max_points:
+                step = len(data_array) // max_points
+                data_array = data_array[::step]
+                positions = positions[::step]
+                energies = energies[::step]
+                print(f"Downsampled {material} at {energy} GeV from {len(data_points)} to {len(data_array)} points")
+            
+            clipped_energies = np.clip(energies, MIN_ENERGY, MAX_ENERGY)
+            
+            scatter = go.Scatter3d(
+                x=positions[:, 0],
+                y=positions[:, 1],
+                z=positions[:, 2],
+                mode='markers',
+                marker=dict(
+                    size=4,
+                    color=clipped_energies,
+                    colorscale='Viridis',
+                    cmin=MIN_ENERGY,
+                    cmax=MAX_ENERGY,
+                    colorbar=dict(
+                        title='Energy [MeV]',
+                        tickvals=np.linspace(MIN_ENERGY, MAX_ENERGY, 5),
+                        ticktext=[f"{val:.2f}" for val in np.linspace(MIN_ENERGY, MAX_ENERGY, 5)]
+                    ),
+                    opacity=0.7,
+                    showscale=True
+                ),
+                name=material,
+                text=[f'Material: {material}<br>Energy: {e:.3f} MeV<br>Position: ({x:.1f}, {y:.1f}, {z:.1f}) cm' 
+                      for e, x, y, z in zip(energies, positions[:,0], positions[:,1], positions[:,2])],
+                hoverinfo='text'
+            )
+            
+            fig.add_trace(scatter)
+            
+            if np.any(energies < MIN_ENERGY):
+                fig.add_trace(go.Scatter3d(
+                    x=[None], y=[None], z=[None],
+                    mode='markers',
+                    marker=dict(
+                        size=8,
+                        color='gray',
+                        opacity=0.7
+                    ),
+                    name=f'Energy < {MIN_ENERGY} MeV',
+                    showlegend=True
+                ))
+            
+            if np.any(energies > MAX_ENERGY):
+                fig.add_trace(go.Scatter3d(
+                    x=[None], y=[None], z=[None],
+                    mode='markers',
+                    marker=dict(
+                        size=8,
+                        color='red',
+                        opacity=0.7
+                    ),
+                    name=f'Energy > {MAX_ENERGY} MeV',
+                    showlegend=True
+                ))
+            
+            fig.update_layout(
+                title=f'3D Particle Positions - {material} at {energy} GeV<br>'
+                      f'Color range: {MIN_ENERGY}-{MAX_ENERGY} MeV | Points: {len(data_array)}',
+                scene=dict(
+                    xaxis_title='X Position (cm)',
+                    yaxis_title='Y Position (cm)',
+                    zaxis_title='Z Position (cm)',
+                    camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+                ),
+                margin=dict(l=0, r=0, b=0, t=50),
+                height=800,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01
+                )
+            )
+            output_file = os.path.join(output_dir, f'3d_{material}_{energy}GeV.html')
+            fig.write_html(output_file)
+            output_files.append(output_file)
+    
+    return output_files
+
+
 def main():
     sim_dirs = [d for d in os.listdir('.') if d.startswith('simulation_results_')]
     if not sim_dirs:
@@ -275,29 +478,32 @@ def main():
     directory = os.path.join('.', latest_dir)
     print(f"Analyzing files in: {directory}")
     
-    grouped_data, depth_energy_data = load_and_group_files(directory)  
+    grouped_data, position_energy_data = load_and_group_files_enhanced(directory)
     if not grouped_data:
         print("No valid data found!")
         return
     
-    
-    # depth_plots = plot_energy_vs_depth(depth_energy_data)
+    # # Interactive 3D position plots
+    interactive_3d_plots = plot_interactive_3d_positions(position_energy_data, max_points=25000)
+
+    # 3D position plots
+    # position_plots = plot_3d_particle_positions(position_energy_data)
     
     # # Static histograms
     # histograms = plot_grouped_histograms(grouped_data)
     
-    # # Statistical comparison
+    # Statistical comparison
     # comparison = plot_statistics_comparison(grouped_data)
     
-    # Interactive plots
-    interactive_plots = create_interactive_plot(grouped_data)
+    # Interactive wavelength plots
+    # interactive_plots = create_interactive_plot(grouped_data)
 
     print("\nAnalysis complete! Generated plots:")
-    # print(f"- Energy vs depth plots: {len(depth_plots)} files")
+    print(f"- Interactive 3D position plots: {len(interactive_3d_plots)} files")
+    # print(f"- 3D position plots: {len(position_plots)} files")
     # print(f"- Grouped histograms by energy: {len(histograms)} files")
     # print(f"- Statistical comparison: {comparison}")
-    print(f"- Interactive plots: {interactive_plots}")
-
+    # print(f"- Interactive wavelength plots: {interactive_plots}")
 
 if __name__ == "__main__":
     main()
