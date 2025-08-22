@@ -7,6 +7,25 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
+def classificar_faixa(energia_mev):
+    """Classifica a energia em IR, Visível ou UV com base em MeV"""
+    if 1e-6 <= energia_mev < 1.65e-3:
+        return "Infravermelho"
+    elif 1.65e-3 <= energia_mev < 3.26e-3:
+        return "Visível"
+    elif energia_mev >= 3.26e-3:
+        return "Ultravioleta"
+    else:
+        return "Desconhecido"
+
+color_map = {
+    "Infravermelho": "red",
+    "Visível": "green",
+    "Ultravioleta": "blue",
+    "Desconhecido": "gray"
+}
+
+
 def create_output_directory(base_path="."):
     """Cria a estrutura de diretórios para os resultados da análise"""
     output_dir = os.path.join(base_path, "analysis_results")
@@ -65,16 +84,29 @@ def load_and_group_files_enhanced(directory):
 
 
 def create_interactive_plot_histogram(data, bins=1000, output_dir="histograms"):
+    
     """Cria histogramas interativos de contagem de partículas por energia"""
     colors = {'Air': 'blue', 'CO2': 'green', 'CH4': 'red'}
     
+    # Mapeamento de energia para quantidade de bins
+    bins_map = {
+        0.5: 10000,
+        1: 10000,
+        5: 100000,
+        10: 100000
+    }
+    
     for energy, materials_data in data.items():
-        fig = make_subplots(rows=2, cols=1, 
-                          vertical_spacing=0.1)
+        fig = make_subplots(rows=2, cols=1, vertical_spacing=0.1)
+        
+        print(f"Energia: {energy} GeV")
+        
+        # Número de bins de acordo com a energia
+        bins = bins_map.get(float(energy), 10000)  # valor padrão caso não esteja no dicionário
         
         all_energies = []
         for material, entries in materials_data.items():
-            energies = [entry[3] for entry in entries]  
+            energies = [entry[3] for entry in entries]
             all_energies.extend(energies)
             
             fig.add_trace(
@@ -95,7 +127,6 @@ def create_interactive_plot_histogram(data, bins=1000, output_dir="histograms"):
                 row=1, col=1
             )
         
-        
         fig.update_layout(
             title_text=f"Distribuição de Energia - E0 = {energy} GeV",
             height=800,
@@ -104,28 +135,7 @@ def create_interactive_plot_histogram(data, bins=1000, output_dir="histograms"):
             yaxis_title="Número de Partículas"
         )
         
-        
-        if all_energies:
-            q1, q3 = np.percentile(all_energies, [5, 95])
-            fig.update_xaxes(range=[q1, q3], row=2, col=1)
-            
-            
-            for material, entries in materials_data.items():
-                energies = [entry[3] for entry in entries]
-                fig.add_trace(
-                    go.Histogram(
-                        x=energies,
-                        name=material,
-                        marker_color=colors.get(material, 'gray'),
-                        opacity=0.5,
-                        nbinsx=bins,
-                        showlegend=False
-                    ),
-                    row=2, col=1
-                )
-        
-        
-        safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
+        safe_energy = "".join(c for c in str(energy) if c.isalnum() or c in (' ', '_')).rstrip()
         output_file = os.path.join(output_dir, f"histograma_{safe_energy}.html")
         fig.write_html(output_file)
     
@@ -158,6 +168,7 @@ def create_3d_plots(position_energy_data, output_dir, z_ranges=None):
             
             create_individual_layer_plots(entries, material, energy, z_ranges, material_dir)
 
+
 def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_points=5000):
     """
     Cria um gráfico 3D completo mostrando todas as partículas de -10000 a 10000
@@ -183,7 +194,6 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                 print(f"Nenhuma partícula encontrada para {material}-{energy}")
                 continue
             
-            
             df_list = []
             for (x, y, z), energies in grid.items():
                 df_list.append({
@@ -202,10 +212,8 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
             
             df = pd.DataFrame(df_list)
             
-            
             fig = go.Figure()
-            
-            
+
             fig.add_trace(
                 go.Scatter3d(
                     x=df['X'],
@@ -213,21 +221,22 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                     z=df['Z'],
                     mode='markers',
                     marker=dict(
-                        size=df['Count']/df['Count'].max()*10 + 3,  
+                        size=df['Count'] / df['Count'].max() * 10 + 3,
                         color=df['Energy'],
                         colorscale='thermal',
                         colorbar=dict(title='Energia Média (MeV)'),
                         opacity=0.7,
                         line=dict(width=0)
                     ),
-                    text=[f"Partículas: {c}<br>Energia média: {e:.2f} MeV" 
-                          for c, e in zip(df['Count'], df['Energy'])],
+                    text=[
+                        f"Partículas: {c}<br>Energia média: {e:.2f} MeV"
+                        for c, e in zip(df['Count'], df['Energy'])
+                    ],
                     hoverinfo='text',
                     name=material
                 )
             )
-            
-            
+
             fig.update_layout(
                 title=f"{material} - {energy} GeV",
                 scene=dict(
@@ -236,16 +245,15 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                     zaxis_title='Z (m)',
                     aspectmode='manual',
                     aspectratio=dict(x=1, y=1, z=2),
-                    zaxis=dict(range=[10000, -10000]),  
+                    zaxis=dict(range=[10000, -10000]),
                     camera=dict(
-                        eye=dict(x=1.5, y=1.5, z=-0.5),  
-                        up=dict(x=0, y=0, z=1)           
+                        eye=dict(x=1.5, y=1.5, z=-0.5),
+                        up=dict(x=0, y=0, z=1)
                     )
                 ),
                 margin=dict(l=0, r=0, b=0, t=30)
             )
-            
-            
+
             safe_material = "".join(c for c in material if c.isalnum() or c in (' ', '_')).rstrip()
             safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
             output_file = os.path.join(full_3d_dir, f"full_3d_grouped_{safe_material}_{safe_energy}.html")
@@ -254,7 +262,7 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
 
 
 def create_combined_3d_plot(entries, material, energy, z_ranges, output_dir):
-    """Cria um gráfico 3D com todos os layers combinados"""
+    """Cria um gráfico 3D com todos os layers combinados e cor por faixa espectral"""
     df_list = []
     layers_present = set()
     
@@ -262,9 +270,11 @@ def create_combined_3d_plot(entries, material, energy, z_ranges, output_dir):
         for entry in entries:
             x_m, y_m, z_m, e_kin = entry
             if z_min <= z_m <= z_max:
+                faixa = classificar_faixa(e_kin)
                 df_list.append({
                     'X': x_m, 'Y': y_m, 'Z': z_m,
                     'Energy': e_kin,
+                    'Faixa': faixa,
                     'Layer': f'Layer {layer_idx}',
                     'Z_Range': f'{z_min:.1f}m a {z_max:.1f}m'
                 })
@@ -279,24 +289,27 @@ def create_combined_3d_plot(entries, material, energy, z_ranges, output_dir):
     fig = px.scatter_3d(
         df,
         x='X', y='Y', z='Z',
-        color='Energy',
+        color='Faixa',
         title=f"{material} - {energy} GeV",
-        labels={'X': 'X (m)', 'Y': 'Y (m)', 'Z': 'Z (m)', 'Energy': 'Energia (MeV)'},
-        color_continuous_scale='thermal',
-        hover_data=['Layer', 'Z_Range']
+        labels={'X': 'X (m)', 'Y': 'Y (m)', 'Z': 'Z (m)', 'Faixa': 'Tipo de Radiação'},
+        hover_data=['Energy', 'Layer', 'Z_Range'],
+        color_discrete_map={
+            'Ultravioleta': '#440154',         # Roxo escuro
+            'Visível': '#21908d',    # Verde-azulado
+            'Infravermelho': '#fde725',  # Amarelo
+            'Desconhecido': "#9494947D",  # Amarelo
+        }
     )
     
     fig.update_layout(
         scene=dict(aspectmode='data'),
-        coloraxis_colorbar=dict(title='Energia (MeV)')
+        legend_title='Faixa Espectral'
     )
-    
     
     fig.update_traces(
         marker=dict(size=4, opacity=0.7, line=dict(width=0)),
         selector=dict(mode='markers')
     )
-    
     
     safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
     output_file = os.path.join(output_dir, f"ALL_LAYERS_{safe_energy}_3d.html")
@@ -304,23 +317,22 @@ def create_combined_3d_plot(entries, material, energy, z_ranges, output_dir):
     print(f"Gráfico 3D combinado salvo em: {output_file}")
 
 
+
 def create_individual_layer_plots(entries, material, energy, z_ranges, output_dir):
     """Cria gráficos 3D com barras de energia mais espessas para cada layer"""
+    
     for layer_idx, (z_min, z_max) in enumerate(z_ranges, start=1):
-        
         sampled_entries = []
         grid_size = 0.01  
-        
-        
+
         grid = {}
         for entry in entries:
             x_m, y_m, z_m, e_kin = entry
             if z_min <= z_m <= z_max:
-                
                 grid_x = round(x_m / grid_size) * grid_size
                 grid_y = round(y_m / grid_size) * grid_size
                 grid_key = (grid_x, grid_y)
-                
+
                 if grid_key not in grid:
                     grid[grid_key] = {
                         'x': grid_x,
@@ -330,8 +342,7 @@ def create_individual_layer_plots(entries, material, energy, z_ranges, output_di
                     }
                 grid[grid_key]['energies'].append(e_kin)
                 grid[grid_key]['count'] += 1
-        
-        
+
         bar_data = []
         for key in grid:
             avg_energy = np.mean(grid[key]['energies'])
@@ -341,41 +352,36 @@ def create_individual_layer_plots(entries, material, energy, z_ranges, output_di
                 'Energy': avg_energy,
                 'Count': grid[key]['count']
             })
-        
+
         if not bar_data:
             print(f"Nenhuma partícula encontrada para {material}-{energy} no Layer {layer_idx}")
             continue
-        
-        
+
         max_bars = 1000
         if len(bar_data) > max_bars:
-            
             bar_data = pd.DataFrame(bar_data).sample(max_bars).to_dict('records')
             print(f"Amostra reduzida para {max_bars} barras no Layer {layer_idx}")
-        
-        
+
         fig = go.Figure()
-        
-        
+
         for bar in bar_data:
+            faixa = classificar_faixa(bar['Energy'])
             fig.add_trace(go.Scatter3d(
                 x=[bar['X'], bar['X']],
                 y=[bar['Y'], bar['Y']],
                 z=[0, bar['Energy']],
                 mode='lines',
                 line=dict(
-                    width=20 + 15 * min(bar['Count']/10, 5),  
-                    color=bar['Energy'],
-                    colorscale='thermal',
-                    cmin=0,  
-                    cmax=max(b['Energy'] for b in bar_data)  
+                    width=20 + 15 * min(bar['Count'] / 10, 5),
                 ),
                 hoverinfo='text',
-                text=f"Pos: ({bar['X']:.1f}, {bar['Y']:.1f})<br>Energia média: {bar['Energy']:.2f} MeV<br>Partículas: {bar['Count']}",
+                text=f"Pos: ({bar['X']:.2f}, {bar['Y']:.2f})<br>"
+                     f"Energia média: {bar['Energy']:.6f} MeV<br>"
+                     f"Partículas: {bar['Count']}<br>"
+                     f"Faixa: {faixa}",
                 showlegend=False
             ))
-        
-        
+
         fig.update_layout(
             title=dict(
                 text=f"{material} ({energy} GeV) - Layer {layer_idx}<br>Z: {z_min:.1f}m a {z_max:.1f}m | {len(bar_data)} barras",
@@ -390,19 +396,16 @@ def create_individual_layer_plots(entries, material, energy, z_ranges, output_di
                 aspectratio=dict(x=1, y=1, z=0.5),
                 camera=dict(
                     eye=dict(x=1.2, y=1.2, z=0.6),
-                    up=dict(x=0, y=0, z=1)  
+                    up=dict(x=0, y=0, z=1)
                 )
             ),
-            margin=dict(l=0, r=0, b=0, t=100),
-            coloraxis_colorbar=dict(title='Energia (MeV)')
+            margin=dict(l=0, r=0, b=0, t=100)
         )
-        
-        
+
         safe_material = "".join(c for c in material if c.isalnum() or c in (' ', '_')).rstrip()
         safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
         png_file = os.path.join(output_dir, f"{safe_material}_{safe_energy}_layer{layer_idx}.png")
-        
-        
+
         try:
             fig.write_image(
                 png_file,
@@ -414,7 +417,6 @@ def create_individual_layer_plots(entries, material, energy, z_ranges, output_di
             print(f"Gráfico 3D salvo em: {png_file}")
         except Exception as e:
             print(f"Erro ao salvar gráfico: {str(e)}")
-            
             try:
                 fig.write_image(
                     png_file,
@@ -430,87 +432,66 @@ def create_individual_layer_plots(entries, material, energy, z_ranges, output_di
 
 def create_heatmaps(position_energy_data, output_dir, z_ranges=None):
     """Cria mapas de calor 2D interativos (HTML) e estáticos (PNG) para cada material, energia e layer"""
-    
+
     if z_ranges is None:
         z_ranges = [
-            (-10000, -9800),     
-            (-5000, -4800),      
-            (0, 200),            
-            (4800, 5000),        
-            (9800, 10000)        
+            (-10000, -9800),
+            (-5000, -4800),
+            (0, 200),
+            (4800, 5000),
+            (9800, 10000)
         ]
-    
+
     for energy, materials in position_energy_data.items():
         for material, entries in materials.items():
             for layer_idx, (z_min, z_max) in enumerate(z_ranges, start=1):
                 df_list = []
-                
-                
+
                 for entry in entries:
                     x_m, y_m, z_m, e_kin = entry
                     if z_min <= z_m <= z_max:
+                        faixa = classificar_faixa(e_kin)
                         df_list.append({
                             'X': x_m,
                             'Y': y_m,
                             'Z': z_m,
                             'Energy': e_kin,
+                            'Faixa': faixa,
+                            'Cor': color_map[faixa],
                             'Material': material,
                             'Energy_Group': energy
                         })
-                
+
                 if not df_list:
                     print(f"Nenhuma partícula encontrada para {material}-{energy} no layer {layer_idx} ({z_min:.2f}m a {z_max:.2f}m)")
                     continue
-                
+
                 df = pd.DataFrame(df_list)
-                
-                
-                fig = px.density_heatmap(
+
+                fig = px.scatter(
                     df,
                     x='X',
                     y='Y',
-                    z='Energy',
-                    nbinsx=100,
-                    nbinsy=100,
+                    color='Faixa',
+                    color_discrete_map=color_map,
+                    hover_data=['Energy', 'Material', 'Energy_Group', 'Z'],
                     title=f"{material} ({energy} GeV) - Layer {layer_idx} (Z: {z_min:.2f}m a {z_max:.2f}m)",
-                    labels={
-                        'X': 'Posição X (m)',
-                        'Y': 'Posição Y (m)',
-                        'Energy': 'Energia (MeV)'
-                    },
-                    color_continuous_scale='viridis',
-                    hover_data=['Material', 'Energy_Group', 'Z']
                 )
-                
+
                 fig.update_layout(
-                    coloraxis_colorbar=dict(
-                        title='Energia (MeV)',
-                        thicknessmode='pixels',
-                        thickness=20,
-                        lenmode='pixels',
-                        len=300,
-                        yanchor='top',
-                        y=1,
-                        ticks='outside'
-                    ),
                     xaxis_title='Posição X (m)',
                     yaxis_title='Posição Y (m)',
                     hovermode='closest',
                     width=1200,
-                    height=800
+                    height=800,
+                    legend_title='Faixa Espectral'
                 )
-                
-                
+
+                # Nome seguro para arquivos
                 safe_material = "".join(c for c in material if c.isalnum() or c in (' ', '_')).rstrip()
                 safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
-                
-                
-                
-                
-                
-                
-                
                 png_file = os.path.join(output_dir, f"{safe_material}-{safe_energy}-layer{layer_idx}_heat.png")
+
                 try:
                     fig.write_image(
                         png_file,
@@ -522,7 +503,6 @@ def create_heatmaps(position_energy_data, output_dir, z_ranges=None):
                     print(f"Mapa de calor PNG salvo em: {png_file}")
                 except Exception as e:
                     print(f"Erro ao salvar PNG: {str(e)}")
-                    
                     try:
                         fig.write_image(
                             png_file,
@@ -656,148 +636,7 @@ def plot_max_energy_comparison(position_energy_data, output_dir="analysis_result
         
         print(f"Gráfico de energia máxima para {energy} GeV salvo em: {png_file}")
 
-
-def plot_photon_count_by_spectral_region(position_energy_data, output_dir="analysis_results"):
-    """Gráfico de contagem de fótons por camada, classificados por região espectral (UV, Visível, IV)."""
-    import plotly.express as px
-
-    
-    spectral_regions = {
-        "UV": (3.1e-6, 124e-6),          
-        "Visível": (1.65e-6, 3.1e-6),     
-        "IV": (0.0012e-6, 1.65e-6)        
-    }
-
-    z_ranges = [
-        (-10000, -9800),     
-        (-5000, -4800),      
-        (0, 200),            
-        (4800, 5000),        
-        (9800, 10000)        
-    ]
-
-    
-    plot_dir = os.path.join(output_dir, "spectral_region_plots")
-    os.makedirs(plot_dir, exist_ok=True)
-
-    
-    all_data = []
-    total_detected = 0  
-
-    for energy, materials_data in position_energy_data.items():
-        for layer_idx, (z_min, z_max) in enumerate(z_ranges, start=1):
-            for material, entries in materials_data.items():
-                photons = [entry for entry in entries if z_min <= entry[2] <= z_max]
-                if not photons:
-                    continue
-
-                
-                energies = [photon[3] for photon in photons]
-
-                
-                counts = {}
-                for region, (e_min, e_max) in spectral_regions.items():
-                    counts[region] = sum(e_min <= energy <= e_max for energy in energies)
-                    total_detected += counts[region]
-
-                total_photons = len(photons)
-
-                for region, count in counts.items():
-                    all_data.append({
-                        "Material": material,
-                        "Região Espectral": region,
-                        "Contagem de Fótons": count,
-                        "Porcentagem": (count / total_photons) * 100 if total_photons > 0 else 0,
-                        "Camada": layer_idx,
-                        "Z Range": f"{z_min} a {z_max} m",
-                        "Energia Inicial": energy
-                    })
-
-    
-    if total_detected == 0:
-        print("\nAVISO: Nenhum fóton foi detectado nas faixas UV/Visível/IV.")
-        print("Motivo provável: Seus dados estão na faixa de MeV (alta energia),")
-        print("enquanto UV/Visível/IV estão na faixa de eV (1 MeV = 1.000.000 eV).")
-        
-        
-        fig = px.bar(title="Nenhum fóton detectado nas faixas UV/Visível/IV<br>"
-                          "Seus dados estão em MeV (alta energia), enquanto<br>"
-                          "UV (3.1-124 eV), Visível (1.65-3.1 eV), IV (0.0012-1.65 eV)")
-        fig.update_layout(annotations=[dict(
-            text="Dados incompatíveis com faixas espectrais",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False
-        )])
-        
-        html_file = os.path.join(plot_dir, "AVISO_spectral_regions.html")
-        png_file = os.path.join(plot_dir, "AVISO_spectral_regions.png")
-        fig.write_html(html_file)
-        fig.write_image(png_file, width=800, height=400)
-        return
-
-    df = pd.DataFrame(all_data)
-
-    
-    for energy in df['Energia Inicial'].unique():
-        df_energy = df[df['Energia Inicial'] == energy]
-
-        for material in df_energy['Material'].unique():
-            df_material = df_energy[df_energy['Material'] == material]
-
-            
-            fig = px.bar(df_material,
-                        x="Camada",
-                        y="Contagem de Fótons",
-                        color="Região Espectral",
-                        title=f"Fótons por Região Espectral - {material} - Energia {energy} GeV<br>"
-                              f"(UV: 3.1-124 eV, Visível: 1.65-3.1 eV, IV: 0.0012-1.65 eV)",
-                        labels={"Camada": "Camada", "Contagem de Fótons": "Número de Fótons"},
-                        height=600,
-                        color_discrete_map={"UV": "violet", "Visível": "green", "IV": "red"})
-
-            fig.update_layout(
-                xaxis=dict(
-                    tickmode='array',
-                    tickvals=list(range(1, len(z_ranges)+1)),
-                    ticktext=[f"Camada {i}" for i in range(1, len(z_ranges)+1)]
-                ),
-                barmode='stack',
-                legend_title_text='Região Espectral'
-            )
-
-            
-            safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
-            safe_material = "".join(c for c in material if c.isalnum() or c in (' ', '_')).rstrip()
-            html_file = os.path.join(plot_dir, f"spectral_regions_{safe_material}_{safe_energy}.html")
-            png_file = os.path.join(plot_dir, f"spectral_regions_{safe_material}_{safe_energy}.png")
-
-            fig.write_html(html_file)
-            fig.write_image(png_file, width=1000, height=600, scale=2)
-
-            print(f"Gráfico para {material} ({energy} GeV) salvo em: {png_file}")
-
-    
-    fig_consolidated = px.bar(df,
-                             x="Camada",
-                             y="Contagem de Fótons",
-                             color="Região Espectral",
-                             facet_row="Energia Inicial",
-                             facet_col="Material",
-                             title="Distribuição Espectral de Fótons por Camada, Material e Energia",
-                             height=1500,
-                             color_discrete_map={"UV": "violet", "Visível": "green", "IV": "red"})
-
-    fig_consolidated.update_layout(
-        barmode='stack',
-        legend_title_text='Região Espectral'
-    )
-
-    html_file = os.path.join(plot_dir, "spectral_regions_consolidated.html")
-    png_file = os.path.join(plot_dir, "spectral_regions_consolidated.png")
-
-    fig_consolidated.write_html(html_file)
-    fig_consolidated.write_image(png_file, width=1200, height=1500, scale=2)
-    
+  
 def plot_photon_count_comparison(position_energy_data, output_dir="analysis_results"):
     """Cria gráficos cartesianos da contagem de fótons por camada"""
     import plotly.express as px
@@ -872,6 +711,7 @@ def plot_photon_count_comparison(position_energy_data, output_dir="analysis_resu
         fig.write_image(png_file, width=1000, height=600, scale=2)
         
         print(f"Gráfico de contagem para {energy} GeV salvo em: {png_file}")
+ 
   
 def generate_layer_analysis_report(position_energy_data, output_dir="analysis_results"):
     """Generate simplified photon production reports per layer with wavelength conversion"""
@@ -1019,6 +859,78 @@ def generate_layer_analysis_report(position_energy_data, output_dir="analysis_re
     return report_dir
 
 
+def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_results"):
+    """Plota contagem de fótons por camada considerando IV, visível e UV, usando apenas pontos conectados por linhas"""
+    import plotly.express as px
+
+    spectral_ranges = {
+        "UV (Ultravioleta)":  (3.26e-3, 0.200),    # de 3.26 meV até 124 meV
+        "Visível":            (1.65e-3, 3.27e-3),  # de 1.65 meV até 3.26 meV
+        "IV (Infravermelho)": (1e-6, 1.66e-3)      # de 1 µeV até 1.65 meV
+    }
+
+    z_ranges = [
+        (-10000, -9800),     
+        (-5000, -4800),      
+        (0, 200),            
+        (4800, 5000),        
+        (9800, 10000)        
+    ]
+    
+    spectrum_dir = os.path.join(output_dir, "photon_spectrum_plots")
+    os.makedirs(spectrum_dir, exist_ok=True)
+
+    for spectrum_label, (emin, emax) in spectral_ranges.items():
+        all_data = []
+
+        for energy, materials_data in position_energy_data.items():
+            for layer_idx, (z_min, z_max) in enumerate(z_ranges, start=1):
+                for material, entries in materials_data.items():
+                    count = sum(1 for x in entries if z_min <= x[2] <= z_max and emin <= x[3] <= emax)
+                    all_data.append({
+                        "Material": material,
+                        "Camada": layer_idx,
+                        "Número de Fótons": count,
+                        "Energia Inicial": energy
+                    })
+        
+        if not all_data:
+            print(f"Nenhum fóton encontrado no espectro {spectrum_label}")
+            continue
+
+        df = pd.DataFrame(all_data)
+
+        for energy in df['Energia Inicial'].unique():
+            df_energy = df[df['Energia Inicial'] == energy]        
+            fig = px.line(
+                df_energy,
+                x="Camada",
+                y="Número de Fótons",
+                color="Material",
+                markers=True,
+                title=f"{spectrum_label} - Contagem de Fótons por Camada - {energy} GeV",
+                labels={"Camada": "Camada", "Número de Fótons": "Número de Fótons"},
+                height=600
+            )
+
+            fig.update_layout(
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=list(range(1, len(z_ranges) + 1)),
+                    ticktext=[f"Camada {i}" for i in range(1, len(z_ranges) + 1)]
+                ),
+                legend_title_text="Material",
+            )
+
+            safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
+            spectrum_safe = spectrum_label.split()[0].lower()
+
+            png_file = os.path.join(spectrum_dir, f"{spectrum_safe}_spectrum_count_{safe_energy}.png")
+
+            fig.write_image(png_file, width=1000, height=600, scale=2)
+            print(f"Gráfico de {spectrum_label} salvo em: {png_file}")
+
+
 def main():
     sim_dirs = [d for d in os.listdir('.') if d.startswith('simulation_results_')]
     if not sim_dirs:
@@ -1050,8 +962,8 @@ def main():
 
     
     # print("\nGerando visualizações...")
-    # print("1. Histogramas interativos...")
-    # create_interactive_plot_histogram(position_energy_data, 10000, output_dirs['histograms'])
+    print("1. Histogramas interativos...")
+    create_interactive_plot_histogram(position_energy_data, 10000, output_dirs['histograms'])
     
     # print("\n2. Gráficos 3D...")
     # create_3d_plots(position_energy_data, output_dirs['3d_plots'], z_ranges=custom_z_ranges)
@@ -1062,20 +974,20 @@ def main():
     # print("\n3. Mapas de calor...")
     # create_heatmaps(position_energy_data, output_dirs['heatmaps'], z_ranges=custom_z_ranges)
     
-    # print("\nAnálise concluída com sucesso!")
-    # print(f"Resultados salvos em: {os.path.abspath('analysis_results')}")
-    
     # print("\n4. Gerando relatórios de análise por camada...")
     # generate_layer_analysis_report(position_energy_data, output_dirs['histograms'])
     
     # print("\n5. Gerando gráficos comparativos de energia máxima...")
     # plot_max_energy_comparison(position_energy_data, output_dirs['histograms'])
     
-    print("\n6. Gerando gráficos comparativos de contagem de fótons...")
-    plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
+    # print("\n6. Gerando gráficos comparativos de contagem de fótons...")
+    # plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
     
-    # print("\n7. Gerando gráficos por região espectral (UV/Visível/IV)...")
-    # plot_photon_count_by_spectral_region(position_energy_data, output_dirs['histograms'])
+    # print("\n7. Gerando gráficos espectrais por camada...")
+    # plot_photon_count_by_spectrum(position_energy_data, output_dirs['histograms'])
+
+    print("\nAnálise concluída com sucesso!")
+    print(f"Resultados salvos em: {os.path.abspath('analysis_results')}")
     
 if __name__ == "__main__":
     main()
