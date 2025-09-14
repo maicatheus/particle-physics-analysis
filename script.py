@@ -82,6 +82,59 @@ def load_and_group_files_enhanced(directory):
             
     return energy_material_data
 
+def create_filtered_histogram(data, energy_range=(0, 0.8), bins=10000, output_dir="histograms_filtered"):
+    import os
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    os.makedirs(output_dir, exist_ok=True)
+    colors = {'Air': 'blue', 'CO2': 'green', 'CH4': 'red'}
+
+    for energy, materials_data in data.items():
+        fig = make_subplots(rows=1, cols=1)
+        print(f"[Filtrado] Energia de feixe: {energy} GeV | Range: {energy_range} MeV")
+
+        for material, entries in materials_data.items():
+            # Detecta se entries são tuplas/listas ou apenas números
+            if isinstance(entries[0], (list, tuple)):
+                energies = [entry[3] for entry in entries if energy_range[0] <= entry[3] <= energy_range[1]]
+            else:
+                energies = [entry for entry in entries if energy_range[0] <= entry <= energy_range[1]]
+
+            if not energies:
+                continue
+
+            fig.add_trace(
+                go.Histogram(
+                    x=energies,
+                    name=material,
+                    marker=dict(
+                        color='rgba(0,0,0,0)', 
+                        line=dict(
+                            color=colors.get(material, 'gray'),
+                            width=1
+                        )
+                    ),
+                    opacity=0.7,
+                    nbinsx=bins,
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+
+        fig.update_layout(
+            title_text=f"Distribuição de Energia (Filtrada: {energy_range[0]} - {energy_range[1]} MeV) | E0 = {energy} GeV",
+            height=800,
+            barmode='overlay',
+            xaxis_title="Energia (MeV)",
+            yaxis_title="Número de Partículas"
+        )
+
+        safe_energy = "".join(c for c in str(energy) if c.isalnum() or c in (' ', '_')).rstrip()
+        output_file = os.path.join(output_dir, f"histograma_filtrado_{safe_energy}.html")
+        fig.write_html(output_file)
+
+    return output_dir
 
 def create_interactive_plot_histogram(data, bins=1000, output_dir="histograms"):
     
@@ -963,8 +1016,9 @@ def main():
     
     # print("\nGerando visualizações...")
     print("1. Histogramas interativos...")
-    create_interactive_plot_histogram(position_energy_data, 10000, output_dirs['histograms'])
-    
+    # create_interactive_plot_histogram(position_energy_data, 10000, output_dirs['histograms'])
+    create_filtered_histogram(position_energy_data, energy_range=(0, 0.8), output_dir=output_dirs['histograms'])
+
     # print("\n2. Gráficos 3D...")
     # create_3d_plots(position_energy_data, output_dirs['3d_plots'], z_ranges=custom_z_ranges)
         
