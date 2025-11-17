@@ -751,16 +751,15 @@ def plot_photon_count_comparison(position_energy_data, output_dir="analysis_resu
                 tickvals=list(range(1, len(z_ranges)+1)),
                 ticktext=[f"Camada {i}" for i in range(1, len(z_ranges)+1)]
             ),
-            legend_title_text='Material',
-            yaxis_type="log"  
+            legend_title_text='Material'
         )
         
         
         safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
-        html_file = os.path.join(plot_dir, f"photon_count_line_{safe_energy}.html")
+        # html_file = os.path.join(plot_dir, f"photon_count_line_{safe_energy}.html")
         png_file = os.path.join(plot_dir, f"photon_count_line_{safe_energy}.png")
         
-        fig.write_html(html_file)
+        # fig.write_html(html_file)
         fig.write_image(png_file, width=1000, height=600, scale=2)
         
         print(f"Gráfico de contagem para {energy} GeV salvo em: {png_file}")
@@ -917,9 +916,10 @@ def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_res
     import plotly.express as px
 
     spectral_ranges = {
-        "UV (Ultravioleta)":  (3.26e-3, 0.200),    # de 3.26 meV até 124 meV
-        "Visível":            (1.65e-3, 3.27e-3),  # de 1.65 meV até 3.26 meV
-        "IV (Infravermelho)": (1e-6, 1.66e-3)      # de 1 µeV até 1.65 meV
+        "IV (Infravermelho)": (1e-6, 1.66e-3),       # de 1 µeV até 1.65 meV
+        "Visível":             (1.65e-3, 3.27e-3),   # de 1.65 meV até 3.26 meV
+        "UV (Ultravioleta)":   (3.26e-3, 0.199),     # de 3.26 meV até 200 meV
+        "Raios X e Gama":      (0.200, 1e6)          # de 200 meV (0.2 MeV) até ~100 MeV
     }
 
     z_ranges = [
@@ -1015,9 +1015,9 @@ def main():
 
     
     # print("\nGerando visualizações...")
-    print("1. Histogramas interativos...")
+    # print("1. Histogramas interativos...")
     # create_interactive_plot_histogram(position_energy_data, 10000, output_dirs['histograms'])
-    create_filtered_histogram(position_energy_data, energy_range=(0, 0.8), output_dir=output_dirs['histograms'])
+    # create_filtered_histogram(position_energy_data, energy_range=(0, 0.8), output_dir=output_dirs['histograms'])
 
     # print("\n2. Gráficos 3D...")
     # create_3d_plots(position_energy_data, output_dirs['3d_plots'], z_ranges=custom_z_ranges)
@@ -1034,8 +1034,8 @@ def main():
     # print("\n5. Gerando gráficos comparativos de energia máxima...")
     # plot_max_energy_comparison(position_energy_data, output_dirs['histograms'])
     
-    # print("\n6. Gerando gráficos comparativos de contagem de fótons...")
-    # plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
+    print("\n6. Gerando gráficos comparativos de contagem de fótons...")
+    plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
     
     # print("\n7. Gerando gráficos espectrais por camada...")
     # plot_photon_count_by_spectrum(position_energy_data, output_dirs['histograms'])
