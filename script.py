@@ -221,11 +221,17 @@ def create_3d_plots(position_energy_data, output_dir, z_ranges=None):
             
             create_individual_layer_plots(entries, material, energy, z_ranges, material_dir)
 
-
 def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_points=5000):
     """
-    Cria um gráfico 3D completo mostrando todas as partículas de -10000 a 10000
-    com pontos agrupados para reduzir a quantidade total.
+    Cria gráficos 3D completos mostrando todas as partículas de -10000 a 10000 em Z
+    e de -8000 a 8000 em X e Y, agrupando pontos em uma grade para reduzir a
+    quantidade total de pontos.
+    
+    Parâmetros:
+    - position_energy_data: dict no formato {energy: {material: [(x, y, z, e_kin), ...]}}
+    - output_dir: diretório base onde os HTML serão salvos
+    - grid_size: tamanho da célula da grade para agrupamento (em metros)
+    - max_points: número máximo de pontos a serem plotados por gráfico
     """
     full_3d_dir = os.path.join(output_dir, "full_3d_plots")
     os.makedirs(full_3d_dir, exist_ok=True)
@@ -233,6 +239,7 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
     for energy, materials in position_energy_data.items():
         for material, entries in materials.items():
             
+            # Agrupa partículas em uma grade 3D
             grid = defaultdict(list)
             
             for entry in entries:
@@ -247,6 +254,7 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                 print(f"Nenhuma partícula encontrada para {material}-{energy}")
                 continue
             
+            # Constrói lista agregada
             df_list = []
             for (x, y, z), energies in grid.items():
                 df_list.append({
@@ -259,12 +267,15 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                     'Energy_Group': energy
                 })
             
+            # Limita quantidade de pontos, se necessário
             if len(df_list) > max_points:
+                original_len = len(df_list)
                 df_list = pd.DataFrame(df_list).sample(max_points).to_dict('records')
-                print(f"Reduzindo pontos de {len(df_list)} para {max_points} em {material}-{energy}")
+                print(f"Reduzindo pontos de {original_len} para {max_points} em {material}-{energy}")
             
             df = pd.DataFrame(df_list)
             
+            # Cria figura 3D
             fig = go.Figure()
 
             fig.add_trace(
@@ -290,15 +301,22 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                 )
             )
 
+            # Layout com mesma escala para todos os gráficos
             fig.update_layout(
                 title=f"{material} - {energy} GeV",
                 scene=dict(
                     xaxis_title='X (m)',
                     yaxis_title='Y (m)',
                     zaxis_title='Z (m)',
-                    aspectmode='manual',
-                    aspectratio=dict(x=1, y=1, z=2),
+
+                    # Mesma escala fixa em todos os gráficos
+                    xaxis=dict(range=[-8000, 8000]),
+                    yaxis=dict(range=[-8000, 8000]),
                     zaxis=dict(range=[10000, -10000]),
+
+                    aspectmode='manual',
+                    aspectratio=dict(x=1, y=1, z=1.25),
+
                     camera=dict(
                         eye=dict(x=1.5, y=1.5, z=-0.5),
                         up=dict(x=0, y=0, z=1)
@@ -307,12 +325,12 @@ def create_full_3d_plot(position_energy_data, output_dir, grid_size=0.5, max_poi
                 margin=dict(l=0, r=0, b=0, t=30)
             )
 
+            # Nome de arquivo seguro
             safe_material = "".join(c for c in material if c.isalnum() or c in (' ', '_')).rstrip()
             safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
             output_file = os.path.join(full_3d_dir, f"full_3d_grouped_{safe_material}_{safe_energy}.html")
             fig.write_html(output_file)
             print(f"Gráfico 3D agrupado salvo em: {output_file}")
-
 
 def create_combined_3d_plot(entries, material, energy, z_ranges, output_dir):
     """Cria um gráfico 3D com todos os layers combinados e cor por faixa espectral"""
@@ -615,8 +633,10 @@ def load_and_group_files_with_positions(directory):
 
 
 def plot_max_energy_comparison(position_energy_data, output_dir="analysis_results"):
-    """Cria gráficos cartesianos da energia máxima por camada"""
+    """Cria histogramas (barras) da energia máxima por camada"""
     import plotly.express as px
+    import pandas as pd
+    import os
     
     z_ranges = [
         (-10000, -9800),     
@@ -626,10 +646,8 @@ def plot_max_energy_comparison(position_energy_data, output_dir="analysis_result
         (9800, 10000)        
     ]
     
-    
     plot_dir = os.path.join(output_dir, "energy_comparison_plots")
     os.makedirs(plot_dir, exist_ok=True)
-    
     
     all_data = []
     
@@ -657,18 +675,20 @@ def plot_max_energy_comparison(position_energy_data, output_dir="analysis_result
     
     df = pd.DataFrame(all_data)
     
-    
     for energy in df['Energia Inicial'].unique():
         df_energy = df[df['Energia Inicial'] == energy]
         
-        fig = px.line(df_energy,
-                     x="Camada",
-                     y="Energia Máxima (MeV)",
-                     color="Material",
-                     markers=True,
-                     title=f"Energia Máxima dos Fótons por Camada - Energia Inicial {energy} GeV",
-                     labels={"Camada": "Camada", "Energia Máxima (MeV)": "Energia Máxima (MeV)"},
-                     height=600)
+        # --- HISTOGRAMA (barras agrupadas por material em cada camada) ---
+        fig = px.bar(
+            df_energy,
+            x="Camada",
+            y="Energia Máxima (MeV)",
+            color="Material",
+            barmode="group",
+            title=f"Energia Máxima dos Fótons por Camada - Energia Inicial {energy} GeV",
+            labels={"Camada": "Camada", "Energia Máxima (MeV)": "Energia Máxima (MeV)"},
+            height=600
+        )
         
         fig.update_layout(
             xaxis=dict(
@@ -679,21 +699,21 @@ def plot_max_energy_comparison(position_energy_data, output_dir="analysis_result
             legend_title_text='Material'
         )
         
-        
         safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
-        html_file = os.path.join(plot_dir, f"max_energy_line_{safe_energy}.html")
-        png_file = os.path.join(plot_dir, f"max_energy_line_{safe_energy}.png")
+        html_file = os.path.join(plot_dir, f"max_energy_bar_{safe_energy}.html")
+        png_file = os.path.join(plot_dir, f"max_energy_bar_{safe_energy}.png")
         
         fig.write_html(html_file)
         fig.write_image(png_file, width=1000, height=600, scale=2)
         
-        print(f"Gráfico de energia máxima para {energy} GeV salvo em: {png_file}")
+        print(f"Gráfico de energia máxima (barras) para {energy} GeV salvo em: {png_file}")
 
-  
 def plot_photon_count_comparison(position_energy_data, output_dir="analysis_results"):
-    """Cria gráficos cartesianos da contagem de fótons por camada"""
+    """Cria histogramas (barras) da contagem de fótons por camada"""
     import plotly.express as px
-    
+    import pandas as pd
+    import os
+
     z_ranges = [
         (-10000, -9800),     
         (-5000, -4800),      
@@ -702,10 +722,8 @@ def plot_photon_count_comparison(position_energy_data, output_dir="analysis_resu
         (9800, 10000)        
     ]
     
-    
     plot_dir = os.path.join(output_dir, "photon_count_plots")
     os.makedirs(plot_dir, exist_ok=True)
-    
     
     all_data = []
     
@@ -732,18 +750,20 @@ def plot_photon_count_comparison(position_energy_data, output_dir="analysis_resu
     
     df = pd.DataFrame(all_data)
     
-    
     for energy in df['Energia Inicial'].unique():
         df_energy = df[df['Energia Inicial'] == energy]
         
-        fig = px.line(df_energy,
-                     x="Camada",
-                     y="Número de Fótons",
-                     color="Material",
-                     markers=True,
-                     title=f"Contagem de Fótons por Camada - Energia Inicial {energy} GeV",
-                     labels={"Camada": "Camada", "Número de Fótons": "Número de Fótons"},
-                     height=600)
+        # --- HISTOGRAMA ---
+        fig = px.bar(
+            df_energy,
+            x="Camada",
+            y="Número de Fótons",
+            color="Material",
+            barmode="group",
+            title=f"Histograma da Contagem de Fótons por Camada - Energia Inicial {energy} GeV",
+            labels={"Camada": "Camada", "Número de Fótons": "Número de Fótons"},
+            height=600
+        )
         
         fig.update_layout(
             xaxis=dict(
@@ -754,16 +774,13 @@ def plot_photon_count_comparison(position_energy_data, output_dir="analysis_resu
             legend_title_text='Material'
         )
         
-        
         safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
-        # html_file = os.path.join(plot_dir, f"photon_count_line_{safe_energy}.html")
-        png_file = os.path.join(plot_dir, f"photon_count_line_{safe_energy}.png")
+        png_file = os.path.join(plot_dir, f"photon_count_hist_{safe_energy}.png")
         
-        # fig.write_html(html_file)
         fig.write_image(png_file, width=1000, height=600, scale=2)
         
-        print(f"Gráfico de contagem para {energy} GeV salvo em: {png_file}")
- 
+        print(f"Histograma de contagem para {energy} GeV salvo em: {png_file}")
+
   
 def generate_layer_analysis_report(position_energy_data, output_dir="analysis_results"):
     """Generate simplified photon production reports per layer with wavelength conversion"""
@@ -912,8 +929,10 @@ def generate_layer_analysis_report(position_energy_data, output_dir="analysis_re
 
 
 def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_results"):
-    """Plota contagem de fótons por camada considerando IV, visível e UV, usando apenas pontos conectados por linhas"""
+    """Plota contagem de fótons por camada considerando IV, visível, UV e raios X/γ usando histogramas (barras)."""
     import plotly.express as px
+    import pandas as pd
+    import os
 
     spectral_ranges = {
         "IV (Infravermelho)": (1e-6, 1.66e-3),       # de 1 µeV até 1.65 meV
@@ -939,7 +958,10 @@ def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_res
         for energy, materials_data in position_energy_data.items():
             for layer_idx, (z_min, z_max) in enumerate(z_ranges, start=1):
                 for material, entries in materials_data.items():
-                    count = sum(1 for x in entries if z_min <= x[2] <= z_max and emin <= x[3] <= emax)
+                    count = sum(
+                        1 for x in entries
+                        if z_min <= x[2] <= z_max and emin <= x[3] <= emax
+                    )
                     all_data.append({
                         "Material": material,
                         "Camada": layer_idx,
@@ -954,13 +976,15 @@ def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_res
         df = pd.DataFrame(all_data)
 
         for energy in df['Energia Inicial'].unique():
-            df_energy = df[df['Energia Inicial'] == energy]        
-            fig = px.line(
+            df_energy = df[df['Energia Inicial'] == energy]
+
+            # --- HISTOGRAMA (barras agrupadas por material em cada camada) ---
+            fig = px.bar(
                 df_energy,
                 x="Camada",
                 y="Número de Fótons",
                 color="Material",
-                markers=True,
+                barmode="group",
                 title=f"{spectrum_label} - Contagem de Fótons por Camada - {energy} GeV",
                 labels={"Camada": "Camada", "Número de Fótons": "Número de Fótons"},
                 height=600
@@ -978,10 +1002,13 @@ def plot_photon_count_by_spectrum(position_energy_data, output_dir="analysis_res
             safe_energy = "".join(c for c in energy if c.isalnum() or c in (' ', '_')).rstrip()
             spectrum_safe = spectrum_label.split()[0].lower()
 
-            png_file = os.path.join(spectrum_dir, f"{spectrum_safe}_spectrum_count_{safe_energy}.png")
+            png_file = os.path.join(
+                spectrum_dir,
+                f"{spectrum_safe}_spectrum_count_{safe_energy}.png"
+            )
 
             fig.write_image(png_file, width=1000, height=600, scale=2)
-            print(f"Gráfico de {spectrum_label} salvo em: {png_file}")
+            print(f"Gráfico (histograma) de {spectrum_label} salvo em: {png_file}")
 
 
 def main():
@@ -1023,7 +1050,7 @@ def main():
     # create_3d_plots(position_energy_data, output_dirs['3d_plots'], z_ranges=custom_z_ranges)
         
     # print("\n3. Gráfico 3D completo...")
-    # create_full_3d_plot(position_energy_data, output_dirs['full_3d_plots'])
+    create_full_3d_plot(position_energy_data, output_dirs['full_3d_plots'])
 
     # print("\n3. Mapas de calor...")
     # create_heatmaps(position_energy_data, output_dirs['heatmaps'], z_ranges=custom_z_ranges)
@@ -1034,14 +1061,14 @@ def main():
     # print("\n5. Gerando gráficos comparativos de energia máxima...")
     # plot_max_energy_comparison(position_energy_data, output_dirs['histograms'])
     
-    print("\n6. Gerando gráficos comparativos de contagem de fótons...")
-    plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
+    # print("\n6. Gerando gráficos comparativos de contagem de fótons...")
+    # plot_photon_count_comparison(position_energy_data, output_dirs['histograms'])
     
     # print("\n7. Gerando gráficos espectrais por camada...")
     # plot_photon_count_by_spectrum(position_energy_data, output_dirs['histograms'])
 
-    print("\nAnálise concluída com sucesso!")
-    print(f"Resultados salvos em: {os.path.abspath('analysis_results')}")
+    # print("\nAnálise concluída com sucesso!")
+    # print(f"Resultados salvos em: {os.path.abspath('analysis_results')}")
     
 if __name__ == "__main__":
     main()
